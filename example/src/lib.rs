@@ -16,11 +16,11 @@ pub async fn main_js(url: web_sys::Url) -> Result<(), JsValue> {
 
     console_log::init_with_level(log::Level::Debug).unwrap_throw();
 
-    ThreadPool::builder()
+    let pool = ThreadPool::builder()
         .url(url)
-        .build().await?;
+        .build_local().await?;
 
-    log::info!("{}", sum(&[100; 20000000]));
+    log::info!("{}", pool.install(|| sum(&[100; 20000000])));
 
     Ok(())
 }

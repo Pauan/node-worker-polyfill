@@ -3,7 +3,7 @@ use wasm_bindgen_futures::JsFuture;
 use rayon::ThreadBuilder;
 use futures::future::try_join_all;
 use std::future::Future;
-use spmc::{channel, Receiver};
+use spmc::{channel, Sender, Receiver};
 
 
 #[wasm_bindgen(inline_js = r###"
@@ -39,11 +39,11 @@ extern "C" {
 }
 
 
-async fn spawn_thread_pool(url: web_sys::Url, num_threads: usize) -> Result<(), JsValue> {
+async fn spawn_workers(url: web_sys::Url, num_threads: usize) -> Result<Sender<ThreadBuilder>, JsValue> {
     let module = wasm_bindgen::module();
     let memory = wasm_bindgen::memory();
 
-    let (mut sender, receiver) = channel();
+    let (sender, receiver) = channel();
 
     let receiver = Box::leak(Box::new(receiver));
 
@@ -54,6 +54,27 @@ async fn spawn_thread_pool(url: web_sys::Url, num_threads: usize) -> Result<(), 
     // Needed to work around a Firefox bug where Workers get garbage collected too early
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1592227
     std::mem::forget(workers);
+
+    Ok(sender)
+}
+
+async fn spawn_local_thread_pool(url: web_sys::Url, num_threads: usize) -> Result<rayon::ThreadPool, JsValue> {
+    let mut sender = spawn_workers(url, num_threads).await?;
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .spawn_handler(move |thread| {
+            sender.send(thread).unwrap_throw();
+            Ok(())
+        })
+        .build()
+        .unwrap_throw();
+
+    Ok(pool)
+}
+
+async fn spawn_global_thread_pool(url: web_sys::Url, num_threads: usize) -> Result<(), JsValue> {
+    let mut sender = spawn_workers(url, num_threads).await?;
 
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
@@ -91,15 +112,26 @@ impl ThreadPool {
         self
     }
 
-    pub fn build(self) -> impl Future<Output = Result<(), JsValue>> {
-        spawn_thread_pool(
+    fn defaults(self) -> (web_sys::Url, usize) {
+        (
             self.url.expect("Missing url for ThreadPool"),
 
             self.num_threads.unwrap_or_else(|| {
                 let window: web_sys::Window = js_sys::global().unchecked_into();
                 window.navigator().hardware_concurrency() as usize
-            })
+            }),
         )
+    }
+
+    // TODO this should cleanup the receiver when the ThreadPool is dropped
+    pub fn build_local(self) -> impl Future<Output = Result<rayon::ThreadPool, JsValue>> {
+        let (url, num_threads) = self.defaults();
+        spawn_local_thread_pool(url, num_threads)
+    }
+
+    pub fn build_global(self) -> impl Future<Output = Result<(), JsValue>> {
+        let (url, num_threads) = self.defaults();
+        spawn_global_thread_pool(url, num_threads)
     }
 }
 
