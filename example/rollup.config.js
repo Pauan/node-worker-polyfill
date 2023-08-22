@@ -21,11 +21,11 @@ export default {
 
         rust({
             serverPath: "/js/",
-            inlineWasm: true,
             cargoArgs: [
                 "--config", `build.rustflags=["-C","target-feature=+atomics,+bulk-memory"]`,
                 "-Z", "build-std=panic_abort,std",
             ],
+            inlineWasm: true,
         }),
 
         is_watch && serve({
