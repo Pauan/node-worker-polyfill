@@ -10,20 +10,16 @@ export async function initializeWorker(wasm) {
         });
     }
 
-    /*const [initWasm, { module, memory, address }] = await Promise.all([
+    const [initWasm, { module, memory, address }] = await Promise.all([
         wasm,
         wait(),
-    ]);*/
+    ]);
 
-    /*const exports = await initWasm({
+    const exports = await initWasm({
         initializeHook: (init, path) => init(module, memory),
-    });*/
-
-    console.log("HELLO");
+    });
 
     postMessage(null);
 
-    console.log("DONE");
-
-    //exports.initializeWorker(address);
+    exports.initializeWorker(address);
 }

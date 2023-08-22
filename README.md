@@ -64,3 +64,5 @@ These are the known incompatibilities with the browser:
 
    This only matters if you delay using `addEventListener`, if you use `addEventListener` immediately then
    there is no difference with the browser.
+
+* `console.log` does not behave correctly with Workers, this is a [known bug with Node](https://github.com/nodejs/node/issues/30491).

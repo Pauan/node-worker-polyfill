@@ -13,17 +13,17 @@ use spmc::{channel, Receiver};
                 type: "module",
             });
 
-            worker.postMessage({
-                module,
-                memory,
-                address,
-            });
-
             worker.addEventListener("message", (event) => {
                 resolve(worker);
             }, {
                 capture: true,
                 once: true,
+            });
+
+            worker.postMessage({
+                module,
+                memory,
+                address,
             });
         });
     }

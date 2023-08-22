@@ -1,8 +1,12 @@
 function patch($worker, $os) {
-    globalThis.navigator = {
-        hardwareConcurrency: 2,
-        //hardwareConcurrency: $os.cpus().length,
-    };
+    // This is technically not a part of the Worker polyfill,
+    // but Workers are used for multi-threading, so this is often
+    // needed when writing Worker code.
+    if (globalThis.navigator == null) {
+        globalThis.navigator = {
+            hardwareConcurrency: $os.cpus().length,
+        };
+    }
 
     globalThis.Worker = class Worker extends EventTarget {
         constructor(url, options = {}) {
@@ -13,54 +17,58 @@ function patch($worker, $os) {
                     throw new Error("Worker only supports file: URLs");
                 }
 
-                url = url.pathname;
+                url = url.href;
 
             } else {
                 throw new Error("Filepaths are unreliable, use `new URL(\"...\", import.meta.url)` instead.");
             }
 
+            if (options.type !== "module") {
+                throw new Error("Workers must use \`type: \"module\"\`");
+            }
+
+            // This uses some funky stuff like `patch.toString()`.
+            //
+            // This is needed so that it can synchronously run the polyfill code
+            // inside of the worker.
+            //
+            // It can't use `require` because the file doesn't have a `.cjs` file extension.
+            //
+            // It can't use `import` because that's asynchronous, and the file path
+            // might be different if using a bundler.
             const code = `
                 ${patch.toString()}
 
+                // Inject the polyfill into the worker
                 patch(require("node:worker_threads"), require("node:os"));
 
                 const { workerData } = require("node:worker_threads");
 
-                (async () => {
-                    if (workerData.type === "module") {
-                        await import("file://" + workerData.path);
-
-                    } else {
-                        throw new Error("Workers must use \`type: \\"module\\"\`");
-                    }
-
-                    __triggerWorkerLoaded__();
-
-                })().catch((e) => {
-                    console.error(e.stack);
-                });
+                // This actually loads and runs the worker file
+                import(workerData.url)
+                    .catch((e) => {
+                        // TODO maybe it should send a message to the parent?
+                        console.error(e.stack);
+                    });
             `;
 
             this.worker = new $worker.Worker(code, {
                 eval: true,
                 workerData: {
-                    path: url,
-                    type: options.type,
+                    url,
                 },
             });
 
             this.worker.on("message", (data) => {
-                //console.log("MESSAGE");
-                //console.log(data);
                 this.dispatchEvent(new MessageEvent("message", { data }));
             });
 
-            // TODO
-            this.worker.on("messageerror", (error) => {});
+            this.worker.on("messageerror", (error) => {
+                throw new Error("UNIMPLEMENTED");
+            });
 
             this.worker.on("error", (error) => {
-                //console.log("ERROR");
-                //console.log(error);
+                // TODO attach the error to the event somehow
                 const event = new Event("error");
                 this.dispatchEvent(event);
             });
@@ -70,12 +78,14 @@ function patch($worker, $os) {
             this.worker.postMessage(value, transfer);
         }
 
-        // TODO
-        terminate() {}
+        terminate() {
+            throw new Error("UNIMPLEMENTED");
+        }
     };
 
 
     if (!$worker.isMainThread) {
+        // This is used to create the onmessage, onmessageerror, and onerror setters
         const makeSetter = (prop, event) => {
             let oldvalue;
 
@@ -97,27 +107,7 @@ function patch($worker, $os) {
             });
         };
 
-
-        let pending = [];
-
-        globalThis.__triggerWorkerLoaded__ = () => {
-            pending.forEach((f) => {
-                f();
-            });
-
-            pending = null;
-        };
-
-        const wait = (f) => {
-            if (pending === null) {
-                f();
-
-            } else {
-                pending.push(f);
-            }
-        };
-
-
+        // This makes sure that `f` is only run once
         const memoize = (f) => {
             let run = false;
 
@@ -130,35 +120,30 @@ function patch($worker, $os) {
         };
 
 
+        // We only start listening for messages / errors when the worker calls addEventListener
         const startOnMessage = memoize(() => {
             $worker.parentPort.on("message", (data) => {
-                //wait(() => {
-                    workerEvents.dispatchEvent(new MessageEvent("message", { data }));
-                //});
+                workerEvents.dispatchEvent(new MessageEvent("message", { data }));
             });
         });
 
         const startOnMessageError = memoize(() => {
-            // TODO
-            $worker.parentPort.on("messageerror", (data) => {});
+            throw new Error("UNIMPLEMENTED");
         });
 
         const startOnError = memoize(() => {
             $worker.parentPort.on("error", (data) => {
-                //console.log("CHILD ERROR");
-                //console.log(data);
-
-                //wait(() => {
-                    workerEvents.dispatchEvent(new Event("error"));
-                //});
+                workerEvents.dispatchEvent(new Event("error"));
             });
         });
 
 
+        // Node workers don't have top-level events, so we have to make our own
         const workerEvents = new EventTarget();
 
-        // TODO
-        globalThis.close = () => {};
+        globalThis.close = () => {
+            throw new Error("UNIMPLEMENTED");
+        };
 
         globalThis.addEventListener = (type, ...args) => {
             workerEvents.addEventListener(type, ...args);
@@ -183,22 +168,6 @@ function patch($worker, $os) {
         makeSetter("onmessage", "message");
         makeSetter("onmessageerror", "messageerror");
         makeSetter("onerror", "error");
-
-        /*for (;;) {
-            const data = $worker.receiveMessageOnPort($worker.parentPort);
-
-            if (data === undefined) {
-                break;
-
-            } else {
-                wait(() => {
-                    console.log("CHILD START MESSAGE");
-                    console.log(data);
-
-                    workerEvents.dispatchEvent(new MessageEvent("message", { data }));
-                });
-            }
-        }*/
     }
 }
 
