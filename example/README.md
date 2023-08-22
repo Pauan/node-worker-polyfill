@@ -17,3 +17,9 @@ yarn watch
 ```
 yarn build
 ```
+
+# Running in Node
+
+```
+yarn build && node dist/js/index.js
+```
