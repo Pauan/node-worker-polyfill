@@ -1,6 +1,36 @@
 # node-worker-polyfill
 
-Polyfill for Node that adds support for web Workers
+Polyfill for Node that adds support for web Workers.
+
+Just import the polyfill and create Workers as normal:
+
+```js
+// index.js
+import "node-worker-polyfill";
+
+const worker = new Worker(new URL("worker.js", import.meta.url), { type: "module" });
+
+worker.addEventListener("message", (event) => {
+    console.log(event.data);
+});
+
+worker.postMessage({
+    text: "Hello world!"
+});
+```
+
+```js
+// worker.js
+addEventListener("message", (event) => {
+    if (event.data.text === "Hello world!") {
+        postMessage({
+            text: "Goodbye world!"
+        });
+    }
+});
+```
+
+The polyfill is automatically applied inside of Workers, so you don't need to import it again.
 
 
 # Incompatibilities

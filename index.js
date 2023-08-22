@@ -79,7 +79,7 @@ function patch($worker, $os) {
         }
 
         terminate() {
-            throw new Error("UNIMPLEMENTED");
+            this.worker.terminate();
         }
     };
 
@@ -142,7 +142,7 @@ function patch($worker, $os) {
         const workerEvents = new EventTarget();
 
         globalThis.close = () => {
-            throw new Error("UNIMPLEMENTED");
+            process.exit();
         };
 
         globalThis.addEventListener = (type, ...args) => {

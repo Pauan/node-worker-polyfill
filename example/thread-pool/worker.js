@@ -22,4 +22,6 @@ export async function initializeWorker(wasm) {
     postMessage(null);
 
     exports.initializeWorker(address);
+
+    close();
 }
